@@ -44,7 +44,7 @@ get_forms <- function(name, location) {
 }
 
 # Do the thing 
-get_forms(name = "Kate Test Survey", location = "Temp/IceCream")
+get_forms(name = "Kate Test Survey", location = "Temp/KateTest")
 
 
 
