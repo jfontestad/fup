@@ -1,6 +1,4 @@
-# http://www.jason-french.com/blog/2012/03/27/integrating-r-and-qualtrics/
-  # figure out how to download this once
-# then do the cron job 
+
 
 # Reading in packages 
 if("qualtRics" %in% rownames(installed.packages()) == FALSE) {
