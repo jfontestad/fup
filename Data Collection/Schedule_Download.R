@@ -5,10 +5,10 @@ if("taskscheduleR" %in% rownames(installed.packages()) == FALSE) {
 }
 library(taskscheduleR)
 
+taskscheduler_delete("download_forms")
+
 taskscheduler_create(taskname = "download_forms", rscript = "Y:/LHP/FUP/Impact Study/Do/Data Collection/Download_Qualtrics.R", 
                      schedule = "DAILY", 
-                     starttime = "14:30", 
-                     startdate = format(Sys.Date(), "%d/%m/%Y"))
+                     starttime = "07:00", 
+                     startdate = format(Sys.Date(), "%m/%d/%Y"))
 
-
-## update the time, maybe 7 am 

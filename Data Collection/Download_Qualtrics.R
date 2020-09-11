@@ -34,7 +34,8 @@ get_forms <- function(name, location) {
   survey <- fetch_survey(surveyID = id, 
                          force_request = TRUE)
   
-  today <- Sys.Date()
+  today <- as.character(Sys.Date())
+ 
   filepath <- paste0("Y:/LHP/FUP/Impact Study/", location, today, ".csv")
   write.csv(survey, filepath)
   
