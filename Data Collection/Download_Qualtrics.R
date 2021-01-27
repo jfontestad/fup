@@ -82,5 +82,40 @@ if(today_day == 6) {
 }
 
 
+## Making a .csv with who is in what survey 
+## FIGURE OUT A BETTER WAY TO DO THIS 
+root <- "Y:/LHP/FUP/Impact Study/RData/Qualtrics/"
+phx_haq <- readxl::read_excel(paste0(root, "PHX_HAQ/PHX_HAQ", today, ".xlsx")) %>%
+  rename(p_id = caseid) %>%
+  select(p_id) %>%
+  filter(!is.na(p_id) & !p_id %in% c("ZZZZZZ", "YYYYYY", "XXXXXX")) %>%
+  distinct() %>%
+  mutate(site = 2, 
+         haq = 1)
+
+oc_osq <- readxl::read_excel(paste0(root, "OC_OSQ/OC_OSQ", today, ".xlsx")) %>%
+  select(p_id) %>%
+  filter(!is.na(p_id)) %>%
+  distinct() %>%
+  mutate(site = 3, 
+         osq = 1)
+
+oc_haq <- readxl::read_excel(paste0(root, "OC_HAQ/OC_HAQ", today, ".xlsx")) %>%
+  select(p_id) %>%
+  filter(!is.na(p_id)) %>%
+  distinct() %>%
+  mutate(site = 3, 
+         haq = 1)
+
+surveys_taken <- phx_haq %>%
+  bind_rows(oc_osq) %>%
+  bind_rows(oc_haq) %>%
+  mutate(p_id = str_to_lower(p_id))
+
+foreign::write.dta(dataframe = surveys_taken, 
+                   file = "Y:/LHP/FUP/Impact Study/Temp/surveys_taken.dta")
+
+
+
 
 
