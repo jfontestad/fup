@@ -15,8 +15,7 @@
 	global particip "Y:\LHP\FUP\Impact Study\Randomization\Temp\Participant Lists\"
 	global rand "Y:\LHP\FUP\Impact Study\Randomization\"
 	
-	global today_d "2021_01_27"
-		// outputting late January but will output list to send out to sites Feb 1 
+	global today_d "2021_02_02"
 
 	/* HOUSING ASSISTANCE FORM : 
 	Universe for all sites except OC: everyone who submitted an application. 
@@ -24,7 +23,7 @@
 	
 	/* Phoenix 
 	TO-DOS: possibly remove searching */
-	global last_phx_haf "2020_01_27"
+	global last_phx_haf "2021_02_01"
 	use "${cdata}DashboardData.dta", clear
 		
 		keep if dashboard == 1 & treatment == 1 & site == 2
@@ -43,7 +42,6 @@
 			replace status = "Expired" if expired == 1 
 			replace status = "Leased up" if leasedup == 1
 			replace status = "Case closed" if case_closed_postissue == 1 
-			replace status = "Searching" if issued == 1 & leasedup == 0 & expired == 0  & case_closed_postissue == 0 
 			replace status = "Denied" if denied == 1 							// after 1/11 mtg, denied families included
 			replace status = "Withdrew" if vol_withdrawal_post == 1
 			
@@ -53,14 +51,13 @@
 			replace status_q = "provided a voucher, but the voucher expired" if status == "Expired"
 			replace status_q = "leased up" if status == "Leased up"
 			replace status_q = "provided a voucher, but the case closed prior to the family leasing up" if status == "Case closed"
-			replace status_q = "searching for housing" if status == "Searching"
 			replace status_q = "denied a voucher" if status == "Denied"
 			replace status_q = "provided a voucher, but withdrew from the program" if status == "Withdrew"
 			
 		gen voucher_date = expired_d if status == "Expired"
 			replace voucher_date = leaseup_d if status == "Leased up"
 			replace voucher_date = denied_d if status == "Denied"
-			replace voucher_date = . if status == "Case closed" | status == "Searching" | status == "Withdrew"
+			replace voucher_date = . if status == "Case closed" | status == "Withdrew"
 			format voucher_date %td
 
 			assert status_q != ""
@@ -87,8 +84,9 @@
 		restore
 			
 		merge m:1 caseid using `last_sent'
-			assert _merge != 2 
-			gen newflag_lastname = (_merge == 1) 	/* naming it this this so Kassie remembers to include in link list output */
+			// assert _merge != 2 
+			drop if _merge == 2 												// doing this because they previously included Searching, now dropping those 
+			gen newflag_lastname = (_merge == 1) 								/* naming it this this so Kassie remembers to include in link list output */
 			drop _merge 
 			
 			// number of new ones to tell the team 
@@ -106,7 +104,7 @@
 	Universe for OC: everyone issued a voucher, expired, voluntarily withdrew after submitting app, or 
 	denied because of incomplete app / didn't show up to appointments 
 	Wait to put on list until terminal outcome (e.g. expired, withdrew, denied, leased up) not issued only */
-	global last_oc_haf "2020_01_08"
+	global last_oc_haf "2021_02_01"
 	use "${cdata}DashboardData.dta", clear
 		
 		keep if dashboard == 1 & treatment == 1 & site == 3
@@ -232,7 +230,7 @@
 	/* Phoenix 
 	IF THERE ARE ANY THAT WERE IN THE PROGRAM FOR 6 MONTHS AND THEN LOST THEIR VOUCHER 
 	lost voucher not due to expiration then handle those */
-	global last_phx_osq "2020_12_14"
+	global last_phx_osq "2021_01_08"
 	use "${cdata}DashboardData.dta", clear
 	
 		keep if site == 2 & treatment == 1

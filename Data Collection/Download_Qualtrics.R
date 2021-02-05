@@ -1,4 +1,7 @@
 # test
+library(here)
+library(tidyverse)
+library(foreign)
 
 # Reading in packages 
 if("qualtRics" %in% rownames(installed.packages()) == FALSE) {
@@ -16,7 +19,7 @@ library(tidyverse)
 library(lubridate)
 
 # Reading in and setting credentials
-credentials <- read.csv("Y:/LHP/FUP/Impact Study/Do/Data Collection/credentials.txt", 
+credentials <- read.csv(here("/Data Collection/credentials.txt"), 
                         sep="",
                         stringsAsFactors =  FALSE)
 
@@ -33,7 +36,7 @@ qualtrics_api_credentials(
 surveys <- all_surveys()
 
 # Function for reading in and saving the survey to the Y 
-get_forms <- function(surveyname, location) {
+get_and_save_forms <- function(surveyname, return = TRUE, location) {
   
   ## Add something that only downloads it if last modified recently 
   ## and is currently active 
@@ -61,14 +64,18 @@ get_forms <- function(surveyname, location) {
   
   print(paste0("file saved to ", filepath, "!!!!"))
   
-  # maybe skip certain days of the week for certain surveys if I only want this weekly
+  if(return == TRUE) {
+    return(survey)
+  }
 }
 
 # Do the thing 
-get_forms(surveyname = "Housing Application and Search Assistance Questionnaire - PHX", location = "PHX_HAQ/PHX_HAQ")
-get_forms(surveyname = "FUP Housing Status Form - PHX", location = "PHX_HSF/PHX_HSF")
-get_forms(surveyname = "Ongoing Services Questionnaire - OC", location = "OC_OSQ/OC_OSQ")
-get_forms(surveyname = "Housing Application and Search Assistance Questionnaire - OC", location = "OC_HAQ/OC_HAQ")
+get_and_save_forms(surveyname = "FUP Housing Status Form - PHX", location = "PHX_HSF/PHX_HSF", return = FALSE)
+
+phx_haq <- get_and_save_forms(surveyname = "Housing Application and Search Assistance Questionnaire - PHX",  location = "PHX_HAQ/PHX_HAQ")
+phx_osq <- get_and_save_forms(surveyname = "Ongoing Services Questionnaire - PHX", location = "PHX_OSQ/PHX_OSQ")
+oc_osq <- get_and_save_forms(surveyname = "Ongoing Services Questionnaire - OC", location = "OC_OSQ/OC_OSQ")
+oc_haq <- get_and_save_forms(surveyname = "Housing Application and Search Assistance Questionnaire - OC", location = "OC_HAQ/OC_HAQ")
 
 # Only do these once a week on Fridays 
 today <- as.character(Sys.Date())
@@ -76,44 +83,66 @@ today_date <- ymd(today)
 today_day <- wday(today_date)
 
 if(today_day == 6) {
-  get_forms(surveyname = "Referral Form Pt. 1-PHX", location = "PHX_Referral/PHX_Referral1_")
-  get_forms(surveyname = "Referral Form Pt. 2-PHX", location = "PHX_Referral/PHX_Referral2_")
+  get_and_save_forms(surveyname = "Referral Form Pt. 1-PHX", location = "PHX_Referral/PHX_Referral1_", return = FALSE)
+  get_and_save_forms(surveyname = "Referral Form Pt. 2-PHX", location = "PHX_Referral/PHX_Referral2_", return = FALSE)
   
 }
 
 
-## Making a .csv with who is in what survey 
-## FIGURE OUT A BETTER WAY TO DO THIS 
-root <- "Y:/LHP/FUP/Impact Study/RData/Qualtrics/"
-phx_haq <- readxl::read_excel(paste0(root, "PHX_HAQ/PHX_HAQ", today, ".xlsx")) %>%
+## Making a .dta with who is in what survey -- one for HAF one for OSQ
+## take a look at surveys to see if this is accurately representing them 
+
+phx_haq_ids <- phx_haq %>%
+  # removing test cases  
+  mutate(Q5 = tolower(Q5), 
+         is_test = ifelse(str_detect(Q5, "test") == TRUE, 1, 0)) %>%
+  filter(is_test == 0) %>%
+  # getting just list of IDs
+  rename(p_id = caseid) %>%
+  select(p_id) %>% 
+  distinct() %>%
+  mutate(site = 2)
+
+oc_haq_ids <- oc_haq %>% 
+  # doesn't seem like there's any tests in here?
+  select(p_id) %>%
+  filter(!is.na(p_id)) %>%
+  distinct() %>%
+  mutate(site = 3, 
+         p_id = tolower(p_id))
+
+haq_ids <- phx_haq_ids %>%
+  bind_rows(oc_haq_ids)
+
+write.dta(haq_ids, "Y:/LHP/FUP/Impact Study/Temp/HAF_Completed.dta")
+
+
+phx_osq_ids <- phx_osq %>%
+  # removing test cases by date, not all have "test" in the name 
+  mutate(StartDate = date(StartDate)) %>%
+  filter(StartDate >= date("2020-12-29")) %>%
+  # getting list of IDs
   rename(p_id = caseid) %>%
   select(p_id) %>%
-  filter(!is.na(p_id) & !p_id %in% c("ZZZZZZ", "YYYYYY", "XXXXXX")) %>%
+  mutate(p_id = as.character(p_id)) %>%
   distinct() %>%
-  mutate(site = 2, 
-         haq = 1)
+  mutate(site = 2)
 
-oc_osq <- readxl::read_excel(paste0(root, "OC_OSQ/OC_OSQ", today, ".xlsx")) %>%
+oc_osq_ids <- oc_osq %>%
+  # remove testing before Jan 12
+  mutate(startDate = date(StartDate)) %>%
+  filter(StartDate >= date("2021-01-12")) %>%
   select(p_id) %>%
   filter(!is.na(p_id)) %>%
   distinct() %>%
   mutate(site = 3, 
-         osq = 1)
+         p_id = tolower(p_id))
 
-oc_haq <- readxl::read_excel(paste0(root, "OC_HAQ/OC_HAQ", today, ".xlsx")) %>%
-  select(p_id) %>%
-  filter(!is.na(p_id)) %>%
-  distinct() %>%
-  mutate(site = 3, 
-         haq = 1)
+osq_ids <- phx_osq_ids %>%
+  bind_rows(oc_osq_ids)
 
-surveys_taken <- phx_haq %>%
-  bind_rows(oc_osq) %>%
-  bind_rows(oc_haq) %>%
-  mutate(p_id = str_to_lower(p_id))
+write.dta(osq_ids, "Y:/LHP/FUP/Impact Study/Temp/OSQ_Completed.dta")
 
-foreign::write.dta(dataframe = surveys_taken, 
-                   file = "Y:/LHP/FUP/Impact Study/Temp/surveys_taken.dta")
 
 
 

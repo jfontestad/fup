@@ -17,24 +17,25 @@ global rand "Y:\LHP\FUP\Impact Study\Randomization\"
 
 log using "${log}DASHBOARD_COMPILE_$S_DATE.log", replace
 
-// check total issued column 
-
 /* HOW TO UPDATE THIS FILE
 When we get a new dashboard: update global last[SITE] and lastdash variable below
 When we want a new dashboard report: update today_d in Stata and Python 
 */
 
+/* NEXT STEPS FOR DASHBOARD
+Update to add "searching for housing" row mostly in Excel */
+
 clear 
 
 /* UPDATE THESE BEFORE RUNNING FOR NEW REPORT */
-global today_m "01"
-global today_d "27"																
+global today_m "02"
+global today_d "CHANGEME"																
 global today_y "2021"
 
-global last "2021_01_22" 												// What today previously was – when last dashboard was run 
+global last "2021_02_05_updated" 												// What today previously was – when last dashboard was run 
 global lastwa "20210126"														// For reading in most recent raw data 
-global lastphx "20210121"														
-global lastoc "20210115"
+global lastphx "20210201"														
+global lastoc "20210131"
 global lastbc "20210121"
 
 /* Setting full dates */
@@ -50,7 +51,7 @@ python:
 	# pull in dates from Stata
 from sfi import Macro 
 today = Macro.getGlobal('today')
-last = Macro.getGlobal('last')													
+last = Macro.getGlobal('last')								
 
 	# Pull in participant list from randomization tool API 
 import requests
@@ -142,7 +143,7 @@ program define clean_bad_dates
 {
 	
 // This might break when reading in - if so delete or add a space before the $S_DATE
-import delimited "${particip}ParticipantAll- $S_DATE.csv", case(lower) clear
+import delimited "${particip}ParticipantAll-$S_DATE.csv", case(lower) clear
 		
 	rename childwelfareid cw_id 
 	replace cw_id = lower(cw_id)
@@ -179,8 +180,8 @@ import delimited "${particip}ParticipantAll- $S_DATE.csv", case(lower) clear
 	keep if treatment == 1 | treatment == 0 
 	
 	gen lastdash = td(26jan2021) if site == 1
-		replace lastdash = td(21jan2021) if site == 2
-		replace lastdash = td(15jan2021) if site == 3
+		replace lastdash = td(01feb2021) if site == 2
+		replace lastdash = td(31jan2021) if site == 3
 		replace lastdash = td(21jan2021) if site == 4
 		format lastdash %td
 		
@@ -260,7 +261,6 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 			replace oc_orientation = "No" if mi(oc_orientation)
 		 rename H dateissued 
 		 rename I datedenied 
-		 rename J t_oc_denied 
 		 rename K reasondenied 
 		 rename L expired_oc  		/* add check that theres no other voucher loss reason */
 		 rename M dateleasedup
@@ -282,10 +282,6 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 		gen oc_denied = (!mi(oc_reasoninelig) | !mi(reasondenied)) & oc_orientation == "Yes"
 		/* Make sure if they were denied or ineligible then either they weren't issued a voucher or it expired */
 		assert mi(dateissued) | strpos(expired_oc, "Yes") > 0 if oc_denied_pcwa == 1 | oc_denied == 1 
-		/* Some discrepancy between Hannah's t_oc_denied: one user error (OC0127 is denied) and hers pick up voluntary withdrawals */
-		
-		list t_oc_denied oc_denied oc_reasoninelig oc_orientation reasondenied if t_oc_denied == "Yes"
-				/* Should be 4 voluntary withdrawal, 3 declined but I pick up one more */
 		drop  dateorientation 
 		
 		 keep p_id date* reason* consent expired* oc_* 
@@ -593,6 +589,61 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 		tab pending site if submitted == 0, m
 		
 	drop reasondenied reasonnoapp reasonlost comments projectid cw_id referral  randomized oc_* 
+	
+	/* tracking housing assistance & ongoing services questionnaires
+	getting denominators from eligible lists produced each month */
+	preserve
+		global last_run "2021_02_01"
+		import delimited "${rdata}Data Collection\PHX_HAF_Eligible_${last_run}.csv", clear
+			rename caseid p_id
+			tostring p_id, replace 
+			gen site = 2 
+			keep p_id site 
+			tempfile phx_haf
+			save `phx_haf'
+		
+		import delimited "${rdata}Data Collection\OC_HAF_Eligible_${last_run}.csv", clear 
+			replace p_id = lower(p_id)
+			gen site = 3
+			keep p_id site 
+			append using `phx_haf'
+			duplicates drop
+			save "${temp}HAF_Eligible.dta", replace 
+			
+			
+		import delimited "${rdata}Data Collection\PHX_OSQ_Eligible_${last_run}.csv", clear 
+			rename caseid p_id 
+			tostring p_id, replace 
+			gen site = 2
+			keep p_id site 
+			tempfile phx_osq 
+			save `phx_osq'
+			
+		import delimited "${rdata}Data Collection\OC_OSQ_Eligible_${last_run}.csv", clear 
+			replace p_id = lower(p_id)
+			gen site = 3 
+			keep p_id site 
+			append using `phx_osq'
+			duplicates drop
+			save "${temp}OSQ_Eligible.dta", replace 
+	restore 
+	
+	merge 1:1 p_id site using "${temp}HAF_Eligible.dta"
+		assert _merge != 2
+		gen haf_eligible = (_merge == 3)
+		drop _merge 
+	merge 1:1 p_id site using "${temp}OSQ_Eligible.dta"
+		assert _merge != 2
+		gen osq_eligible = (_merge == 3)
+		drop _merge
+	merge 1:1 p_id site using "${temp}HAF_Completed.dta"					// pulling in from the data download R file
+		assert _merge != 2
+		gen haf_completed = (_merge == 3)
+		drop _merge
+	merge 1:1 p_id site using "${temp}OSQ_Completed.dta"					// pulling in from data download R file 
+		assert _merge != 2
+		gen osq_completed = (_merge == 3)
+		drop _merge
 		
 	/* Variable labels */
 	label var submitted "Appplication submitted "
@@ -755,6 +806,14 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 		putexcel `col'42 = consent[2,1]
 		tab consent if site_col == "`col'" & leasedup == 1, matcell(consentleased)
 		putexcel `col'43 = consentleased[2,1]
+		tab haf_completed if site_col == "`col'", matcell(haf_completed)
+		putexcel `col'46 = haf_completed[2,1]
+		tab haf_eligible if site_col == "`col'", matcell(haf_eligible)
+		putexcel `col'47 = haf_eligible[2,1]
+		tab osq_completed if site_col == "`col'", matcell(osq_completed)
+		putexcel `col'50 = osq_completed[2,1]
+		tab osq_eligible if site_col == "`col'", matcell(osq_eligible)
+		putexcel `col'51 = osq_eligible[2,1]
 	}
 	sleep 10 
 	
