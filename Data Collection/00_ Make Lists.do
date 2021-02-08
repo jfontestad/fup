@@ -15,7 +15,7 @@
 	global particip "Y:\LHP\FUP\Impact Study\Randomization\Temp\Participant Lists\"
 	global rand "Y:\LHP\FUP\Impact Study\Randomization\"
 	
-	global today_d "2021_02_02"
+	global today_d "2021_02_08" 		// update for new list 
 
 	/* HOUSING ASSISTANCE FORM : 
 	Universe for all sites except OC: everyone who submitted an application. 
@@ -23,9 +23,9 @@
 	
 	/* Phoenix 
 	TO-DOS: possibly remove searching */
-	global last_phx_haf "2021_02_01"
+	global last_phx_haf "2021_02_01"	// update if we want lastname_newflag to be updated
 	use "${cdata}DashboardData.dta", clear
-		
+			
 		keep if dashboard == 1 & treatment == 1 & site == 2
 		
 		/* deduplicate */
@@ -37,32 +37,33 @@
 		assert leasedup == 1 if !mi(leaseup_d)
 		assert expired == 1 if !mi(expired_d)
 		assert leasedup == 0 & denied == 0 if expired == 1
+		gen vol_withdrawal_ever = (vol_withdrawal_post == 1 | vol_withdrawal_pre == 1)
 		
 		gen status = ""
-			replace status = "Expired" if expired == 1 
 			replace status = "Leased up" if leasedup == 1
-			replace status = "Case closed" if case_closed_postissue == 1 
+			replace status = "Expired" if expired == 1 
+			replace status = "Withdrew (after issued)" if vol_withdrawal_ever == 1 & issued == 1
+			replace status = "Case closed (after issued)" if case_closed_ever == 1 & issued == 1
+			replace status = "Withdrew (before issued)" if vol_withdrawal_ever == 1 & issued == 0
+			replace status = "Case closed (before issued)" if case_closed_ever == 1 & issued == 0
 			replace status = "Denied" if denied == 1 							// after 1/11 mtg, denied families included
-			replace status = "Withdrew" if vol_withdrawal_post == 1
+			/* 612617 is both denied and case closed but should be counted as denied */
 			
 			keep if status != ""
 			
 		gen status_q = ""
-			replace status_q = "provided a voucher, but the voucher expired" if status == "Expired"
-			replace status_q = "leased up" if status == "Leased up"
-			replace status_q = "provided a voucher, but the case closed prior to the family leasing up" if status == "Case closed"
-			replace status_q = "denied a voucher" if status == "Denied"
-			replace status_q = "provided a voucher, but withdrew from the program" if status == "Withdrew"
-			
-		gen voucher_date = expired_d if status == "Expired"
-			replace voucher_date = leaseup_d if status == "Leased up"
-			replace voucher_date = denied_d if status == "Denied"
-			replace voucher_date = . if status == "Case closed" | status == "Withdrew"
-			format voucher_date %td
+			replace status_q = "has leased up" if status == "Leased up"
+			/* voucher lost string = "was provided a voucher, but lost the voucher" */
+			replace status_q = "was provided a voucher, but the voucher expired" if status == "Expired"
+			replace status_q = "was provided a voucher, but withdrew from the program" if status == "Withdrew (after issued)"
+			replace status_q = "was provided a voucher, but the case closed prior to the family leasing up" if status == "Case closed (after issued)"
+			replace status_q = "was denied a voucher" if status == "Denied"
+			replace status_q = "withdrew from the program before receiving a voucher" if status == "Withdrew (before issued)"
+			replace status_q = "had their case close before receiving a voucher" if status == "Case closed (before issued)"
 
 			assert status_q != ""
 					
-		keep p_id status status_q submitted_d issued_d voucher_date
+		keep p_id status status_q submitted_d issued_d 
 		
 		rename p_id caseid 
 		rename issued_d issued
@@ -96,7 +97,7 @@
 	gen qualtrics_fname = caseid 
 	sort newflag_lastname caseid 
 	
-	order caseid qualtrics_fname status status_q casemanager cmemail submit issued voucher_date  newflag_lastname
+	order caseid qualtrics_fname status status_q casemanager cmemail submit issued  newflag_lastname
 		
 	export delimited "${rdata}Data Collection\PHX_HAF_Eligible_${today_d}.csv", replace 
 
@@ -247,6 +248,7 @@
 		
 		gen status_q = ""
 			replace status_q = "leased up" if leasedup == 1 
+			// we don't actually need the string so doesn't matter what I put for voucher lost 
 			
 		drop if status_q == ""
 		keep p_id status_q leaseup_d 
