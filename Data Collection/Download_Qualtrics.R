@@ -19,8 +19,8 @@ library(tidyverse)
 library(lubridate)
 
 # Reading in and setting credentials
-credentials <- read.csv(here("/Data Collection/credentials.txt"), 
-                        sep="",
+credentials <- read.csv(file = here::here("Data Collection/", "credentials.txt"),
+                        sep= "",
                         stringsAsFactors =  FALSE)
 
 key <- credentials %>% 
@@ -29,7 +29,8 @@ key <- credentials %>%
 
 qualtrics_api_credentials(
   api_key = key,
-  base_url = "iad1.qualtrics.com"
+  base_url = "iad1.qualtrics.com",
+  install = TRUE
 )
 
 # Tibble of all ma surveys
@@ -93,10 +94,15 @@ if(today_day == 6) {
 ## take a look at surveys to see if this is accurately representing them 
 
 phx_haq_ids <- phx_haq %>%
-  # removing test cases  
+  # removing test cases per rule instructed by Audrey as noted in Y:\LHP\FUP\Impact Study\RData\Qualtrics\PHX_HAQ\PHX_HAQ_2021_02_05_flagged.csv 
   mutate(Q5 = tolower(Q5), 
          is_test = ifelse(str_detect(Q5, "test") == TRUE, 1, 0)) %>%
-  filter(is_test == 0) %>%
+  filter(is_test == 0 | is.na(is_test)) %>%
+  # removing incomplete entries as specified in the same file 
+  mutate(num_na = rowSums(is.na(.)),
+         is_incomplete = ifelse(num_na > 51, 1, 0))  %>%    # this flags the same number of incomplete entries as in Audrey's test .csv above 
+  assertr::verify(is_incomplete == 0 | is_incomplete == 1) %>%
+  filter(is_incomplete == 0) %>%
   # getting just list of IDs
   rename(p_id = caseid) %>%
   select(p_id) %>% 
@@ -118,10 +124,15 @@ write.dta(haq_ids, "Y:/LHP/FUP/Impact Study/Temp/HAF_Completed.dta")
 
 
 phx_osq_ids <- phx_osq %>%
-  # removing test cases by date, not all have "test" in the name 
+  # removing test cases per rule instructed by Audrey as noted in Y:\LHP\FUP\Impact Study\RData\Qualtrics\PHX_HAQ\PHX_OSQ_2021_02_05_flagged.csv 
   mutate(StartDate = date(StartDate)) %>%
-  filter(StartDate >= date("2020-12-29")) %>%
-  # getting list of IDs
+  filter(StartDate >= date("2021-01-05")) %>%
+  # removing incompletes 
+  mutate(num_na = rowSums(is.na(.)),
+         is_incomplete = ifelse(num_na >= 93, 1, 0)) %>% # this flags the same number of incomplete entries as in Audrey's file above 
+  assertr::verify(is_incomplete == 1 | is_incomplete == 0) %>%
+  filter(is_incomplete == 0) %>%
+# getting list of IDs
   rename(p_id = caseid) %>%
   select(p_id) %>%
   mutate(p_id = as.character(p_id)) %>%
