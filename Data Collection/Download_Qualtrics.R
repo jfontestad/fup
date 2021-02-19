@@ -103,14 +103,19 @@ phx_haq_ids <- phx_haq %>%
          is_incomplete = ifelse(num_na > 51, 1, 0))  %>%    # this flags the same number of incomplete entries as in Audrey's test .csv above 
   assertr::verify(is_incomplete == 0 | is_incomplete == 1) %>%
   filter(is_incomplete == 0) %>%
-  # getting just list of IDs
+  # getting just list of IDs for dashboard 
   rename(p_id = caseid) %>%
   select(p_id) %>% 
   distinct() %>%
   mutate(site = 2)
 
 oc_haq_ids <- oc_haq %>% 
-  # doesn't seem like there's any tests in here?
+  # removing tests 
+  filter(Q5 != "Jane Doe" | is.na(Q5)) %>%
+  # this drops all that seem unfinished. Qualtrics variable "Finished" thinks one is incomplete that I disagree with... can resolve later 
+  mutate(num_na = rowSums(is.na(.))) %>%
+  filter(!(num_na > 50 & is.na(Q5))) %>%
+  # getting list of IDs for dashboard 
   select(p_id) %>%
   filter(!is.na(p_id)) %>%
   distinct() %>%
@@ -125,6 +130,7 @@ write.dta(haq_ids, "Y:/LHP/FUP/Impact Study/Temp/HAF_Completed.dta")
 
 phx_osq_ids <- phx_osq %>%
   # removing test cases per rule instructed by Audrey as noted in Y:\LHP\FUP\Impact Study\RData\Qualtrics\PHX_HAQ\PHX_OSQ_2021_02_05_flagged.csv 
+  assertr::verify(!is.na(StartDate)) %>%
   mutate(StartDate = date(StartDate)) %>%
   filter(StartDate >= date("2021-01-05")) %>%
   # removing incompletes 
@@ -140,9 +146,12 @@ phx_osq_ids <- phx_osq %>%
   mutate(site = 2)
 
 oc_osq_ids <- oc_osq %>%
-  # remove testing before Jan 12
+  # remove testing before Jan 12 as specified per Hannah flagged .csv
+  assertr::verify(!is.na(StartDate)) %>%
   mutate(startDate = date(StartDate)) %>%
   filter(StartDate >= date("2021-01-12")) %>%
+  # no incompletes per Hannah's spreadsheet
+  # getting list of IDs for dashboard 
   select(p_id) %>%
   filter(!is.na(p_id)) %>%
   distinct() %>%

@@ -29,17 +29,18 @@ clear
 
 /* UPDATE THESE BEFORE RUNNING FOR NEW REPORT */
 global today_m "02"
-global today_d "CHANGEME"																
+global today_d "19"																
 global today_y "2021"
 
-global last "2021_02_05_updated" 												// What today previously was – when last dashboard was run 
+global last "2021_02_18" 												// What today previously was – when last dashboard was run 
 global lastwa "20210126"														// For reading in most recent raw data 
-global lastphx "20210201"														
-global lastoc "20210131"
+global lastphx "20210216"														
+global lastoc "20210215"
 global lastbc "20210121"
+global lastchi "20210210"
 
 /* Setting full dates */
-global today = "${today_y}"+"_"+"${today_m}"+"_"+"${today_d}" 					// for dashboard filename
+global today = "${today_y}"+"_"+"${today_m}"+"_"+"${today_d}" +"_update"				// for dashboard filename
 global todayrand = "${today_m}"+"/"+"${today_d}"+"/"+"${today_y}"				// for date in dashboard report 
 			
 *****************************************************************************
@@ -143,7 +144,7 @@ program define clean_bad_dates
 {
 	
 // This might break when reading in - if so delete or add a space before the $S_DATE
-import delimited "${particip}ParticipantAll-$S_DATE.csv", case(lower) clear
+import delimited "${particip}ParticipantAll- $S_DATE.csv", case(lower) clear
 		
 	rename childwelfareid cw_id 
 	replace cw_id = lower(cw_id)
@@ -180,9 +181,10 @@ import delimited "${particip}ParticipantAll-$S_DATE.csv", case(lower) clear
 	keep if treatment == 1 | treatment == 0 
 	
 	gen lastdash = td(26jan2021) if site == 1
-		replace lastdash = td(01feb2021) if site == 2
-		replace lastdash = td(31jan2021) if site == 3
+		replace lastdash = td(16feb2021) if site == 2
+		replace lastdash = td(15feb2021) if site == 3
 		replace lastdash = td(21jan2021) if site == 4
+		replace lastdash = td(10feb2021) if site == 6
 		format lastdash %td
 		
 	/* Correcting wrong IDs or mismatches between dashboard and rand tool 
@@ -305,11 +307,39 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 		replace p_id = "m9569" if p_id == "M09569"
 		replace p_id = "f21892-1" if p_id == "F21892"
 		save "${temp}DashboardSite4.dta", replace 
-	
+		
+	import excel "${rdata}\PHA\CHI\CHI_PHA_Dashboard_${lastchi}.xlsx", sheet("Data Entry") ///
+		case(lower) allstring clear 
+		rename A p_id 
+		rename B datesubmitted 
+		rename E dateconsented
+		rename F consent
+		rename G dateissued
+		rename H datedenied 
+		rename I reasondenied 
+		rename M dateleasedup
+		rename P datelost 
+		keep p_id date* reason* consent*
+		drop in 1/2
+		gen site = 6
+		assert mi(datelost)
+		drop datelost 
+		/* Fixing IDs per email with Jazmin on 2/11/2021 saved in RData/PHA/CHI/Documentation 
+		Last digit should be 0, non-zero last digits are person ID */
+		replace p_id = substr(p_id, 1, length(p_id) - 1)
+		replace p_id = p_id + "0"
+		replace p_id = "n8982000" if p_id == "n892000"
+		replace p_id = "p7681800" if p_id == "P768100"
+		replace p_id = "s5282100" if p_id == "s582100"
+		replace p_id = "w8592000" if p_id == "w892000"
+		replace p_id = "r1332000" if p_id == "R3320000"							
+		save "${temp}DashboardSite6.dta", replace 
+		
 	use "${temp}DashboardSite1.dta", clear
 		append using "${temp}DashboardSite2.dta"
 		append using "${temp}DashboardSite3.dta"
 		append using "${temp}DashboardSite4.dta"
+		append using "${temp}DashboardSite6.dta"
 		
 	drop if p_id == ""
 	replace p_id = trim(p_id)
@@ -322,19 +352,14 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 		
 	merge 1:1 p_id using "${rdata}\Randomization\RandomizationData.dta"
 		assert _merge != 1
-		gen randomized = (_merge == 3 | _merge == 2)
 		gen dashboard = (_merge != 2)
 		drop _merge 
 	
-	assert randomized == 1  
-	/* Number included in the report not randomized */
-	tab site if randomized == 0 
 	/* Controls receiving housing:
 	146 from KC 
-	Submitted voucher application, PHX one denied */ 
-	tab p_id site if treatment == 0 & dashboard == 1
-	gen crossover = (treatment == 0 & dashboard == 1)
-	drop if randomized == 0 
+	two from CHI */ 
+	tab p_id site if treatment == 0 & dashboard == 1 
+	gen crossover = (treatment == 0 & dashboard == 1) 
 					
 	tab datesubmitted, m
 	replace datesubmitted = dateissued if site == 3
@@ -342,20 +367,25 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 	gen submitted = (submitted_d != .)
 		replace submitted = 1 if oc_orientation == "Yes"
 		drop oc_orientation
+		
+	replace dateissued = trim(dateissued)
+	clean_bad_dates dateissued issued_d "MDY" "Date Voucher Issued"
+	replace issued_d = td(28jan2020) if p_id == "oc0067" & site == 3			/* Year typo, randomized in Nov*/
+	gen issued = (issued_d != .)
 	
 	/* With expired here - making sure this is count as an expiration not a denial
 	If the date isn't in denial date - might be in expiration date? Or can calculate
 	with issue date + 180 for PHX, 120 for BC, check for other sites */
 	gen expired = 0 
 		replace expired = 1 if strpos(reasondenied, "xpired") > 0
+		replace expired = 1 if strpos(comments, "xpired") > 0
 		replace expired = 1 if strpos(reasonlost, "xpired") > 0
 		replace expired = 1 if strpos(expired_oc, "Yes") > 0
 		replace reasondenied = "" if expired == 1 
 		
-		
 	gen dateexpired = ""
 		replace dateexpired = datelost if expired == 1 & !mi(datelost) & site == 2 // getting from Phoenix
-		replace expired_oc = subinstr(expired_oc,"Yes ","",.)					// getting from OC
+		replace expired_oc = subinstr(expired_oc,"Yes ","",.)						// getting from OC
 		replace dateexpired = expired_oc if !mi(expired_oc) & site == 3			
 		clean_bad_dates dateexpired expired_d "MDY" "Date expired" 
 		
@@ -414,6 +444,9 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 		
 		
 		/* voluntary withdrawal */
+		replace reasonnoapp = lower(reasonnoapp)
+		replace reasonnoapp = trim(reasonnoapp)
+		replace reasonnoapp = "" if reasonnoapp == "n/a" | reasonnoapp == "--"
 		gen vol_withdrawal = (strpos(reasondenied,"voluntary") > 0 | ///
 			strpos(reasondenied, "interested") > 0 |  ///
 			strpos(reasondenied, "withdrawn") > 0 | ///
@@ -422,17 +455,20 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 			strpos(reasondenied, "no longer wishes") > 0 | ///
 			strpos(reasondenied, "per request") > 0 | ///
 			strpos(oc_reasoninelig, "interested") > 0 | ///
-			strpos(oc_reasoninelig, "declined") > 0
-		replace vol_withdrawal = 1 if strpos(comments, "Voluntary Withdrawal") > 0 & p_id != "567935" 
+			strpos(oc_reasoninelig, "declined") > 0 
+			replace vol_withdrawal = 1 if strpos(reasonnoapp, "left state") > 0
+			replace vol_withdrawal = 1 if strpos(reasonnoapp, "change to mesa") > 0
+			replace vol_withdrawal = 1 if strpos(reasonnoapp, "purchase home") > 0
+			replace vol_withdrawal = 1 if strpos(reasonnoapp, "not needed now") > 0
+			replace vol_withdrawal = 1 if strpos(reasonnoapp, "self-selected out") > 0
+			replace vol_withdrawal = 1 if strpos(reasonnoapp, "client moved") > 0
+			replace vol_withdrawal = 1 if strpos(comments, "Voluntary Withdrawal") > 0 & p_id != "567935" 
 				/* This PHX case is marked as voluntary withdrawal in comments but voucher expired */
 			
 		/* handling "other" reasons*/
 		tab reasondenied if reasondenied != "" & denied_r == "" & vol_withdrawal == 0
 		replace denied_r = "Other" if denied_r == "" & reasondenied != "" & vol_withdrawal == 0
 
-	replace reasonnoapp = lower(reasonnoapp)
-	replace reasonnoapp = trim(reasonnoapp)
-	replace reasonnoapp = "" if reasonnoapp == "n/a" | reasonnoapp == "--"
 	replace reasonnoapp = "bridgette says consider denied" if (p_id == "613435" | p_id == "422196") & site == 2 
 	/* Separating out "denials" that happened before application was submitted */
 	gen denied_pcwa = ((denied_d != . | denied_r != "") & submitted == 0 & site != 3)
@@ -440,15 +476,18 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 		replace denied_pcwa = 0 if vol_withdrawal == 1 | expired == 1 
 		replace denied_pcwa = 1 if strpos(reasonnoapp, "not reunification") > 0 
 		replace denied_pcwa = 1 if strpos(reasonnoapp, "no longer eligible") > 0
+		replace denied_pcwa = 1 if strpos(reasonnoapp, "return due to incomplete application") > 0
+		replace denied_pcwa = 1 if strpos(reasonnoapp, "no longer a need") > 0
 		replace denied_pcwa = 1 if reasonnoapp == "bridgette says consider denied"
 		replace denied_pcwa = 1 if oc_denied_pcwa == 1 & site == 3
 		replace denied_pcwa = 0 if vol_withdrawal == 1
-	
+
 	replace comments = lower(comments)
 	replace comments = trim(comments)
+	replace comments = "" if p_id == "612617" 								/* case closed but also denied. consider denied. */
 	gen case_closed_ever = (strpos(reasonnoapp, "case closed") > 0 | strpos(comments, "case closed") > 0)
-	gen case_closed_preissue = case_closed_ever == 1 & mi(dateissued)
-	gen case_closed_postissue = case_closed_ever == 1 & !mi(dateissued)
+	gen case_closed_preissue = case_closed_ever == 1 & issued == 0
+	gen case_closed_postissue = case_closed_ever == 1 & issued == 1
 		replace case_closed_ever = . if site != 2
 		replace case_closed_preissue = . if site != 2
 		replace case_closed_postissue = . if site != 2
@@ -474,11 +513,6 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 	Some folks said they weren't interested and never submitted application 
 	Other folks applied and then withdrew */
 	gen vol_withdrawal_pre = (vol_withdrawal == 1 & submitted == 0)
-		replace vol_withdrawal_pre = 1 if strpos(reasonnoapp, "left state") > 0
-		replace vol_withdrawal_pre = 1 if strpos(reasonnoapp, "change to mesa") > 0
-		replace vol_withdrawal_pre = 1 if strpos(reasonnoapp, "purchase home") > 0
-		replace vol_withdrawal_pre = 1 if strpos(reasonnoapp, "not needed now") > 0
-		replace vol_withdrawal_pre = 1 if strpos(reasonnoapp, "self-selected out") > 0
 	gen vol_withdrawal_post = (vol_withdrawal == 1 & submitted == 1)
 	drop vol_withdrawal
 	
@@ -486,8 +520,8 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 		replace `x' = . if submitted == 1 
 	}
 
-	gen pending = (vol_withdrawal_pre == 0 & denied_pcwa == 0 & submitted == 0 )
-		replace pending = 0 if case_closed_preissue == 1
+	gen pending = (submitted == 0 & issued == 0)
+		replace pending = 0 if case_closed_preissue == 1 | vol_withdrawal_pre == 1 | denied_pcwa == 1
 		replace pending = . if dashboard == 0
 	
 	assert mi(reasonnoapp) if vol_withdrawal_pre != 1 & denied_pcwa != 1 & case_closed_preissue != 1 & pending != 1 & submitted != 1 
@@ -501,13 +535,7 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 	gen disposition_d = denied_d if !mi(denied_d) & denied == 0
 		format disposition_d %td
 	replace denied_d = . if denied == 0
-	
-	
-	replace dateissued = trim(dateissued)
-	clean_bad_dates dateissued issued_d "MDY" "Date Voucher Issued"
-	replace issued_d = td(28jan2020) if p_id == "oc0067" & site == 3			/* Year typo, randomized in Nov*/
-	gen issued = (issued_d != .)
-	
+
 	clean_bad_dates dateleasedup leaseup_d "MDY" "Date Applicant Leased Up"
 	replace leaseup_d = td(14nov2019) if p_id == "612932" & site == 2   		 /* Typo probably, said 2009*/
 	gen leasedup = (leaseup_d != .)
@@ -523,6 +551,7 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 		
 	/* Handling consent */
 	tab dateconsented site, m
+	replace dateconsented = "" if dateconsented == "No" 
 	tab dateconsentreceived site, m
 	tab consent site, m
 	rename consent t_consent 
@@ -530,12 +559,14 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 	
 	gen consent_administered = (!mi(dateconsented) | !mi(dateconsentreceived) | !mi(t_consent))
 	gen consent_returned = (!mi(dateconsentreceived) | !mi(t_consent))
+		replace consent_returned = 1 if site == 6 & consent_administered == 1		/* they do it in person */
 	gen consent = (t_consent == "yes")
 	
-	replace consent_administered = . if treatment == 0 | issued == 0 // actually universe is treatment families at the voucher briefing or something 
-	replace consent_returned = . if treatment == 0 | issued == 0
-	replace consent = . if treatment == 0 | issued == 0
-	
+	replace consent_administered = . if treatment == 0
+	replace consent_administered = . if issued == 0 & inlist(site, 2, 3)
+	replace consent_administered = . if submitted == 0 & site == 6
+	replace consent_returned = . if consent_administered == .
+	replace consent = . if consent_administered == .
 	drop t_*  dateconsented dateconsentreceived 
 	
 	/* doing checks */
@@ -588,7 +619,7 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 		
 		tab pending site if submitted == 0, m
 		
-	drop reasondenied reasonnoapp reasonlost comments projectid cw_id referral  randomized oc_* 
+	drop reasondenied reasonnoapp reasonlost comments projectid cw_id referral  oc_* datelost expired_oc 
 	
 	/* tracking housing assistance & ongoing services questionnaires
 	getting denominators from eligible lists produced each month */
@@ -671,6 +702,8 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 	label var consent_administered "Consent form was mailed out or administered"
 	label var consent_returned "Consent form was filled out or mailed back"
 	label var consent "Client consented"
+	
+	/* Create final disposition variable */
 	
 	save "${cdata}DashboardData.dta", replace 
 
@@ -755,14 +788,16 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 	putexcel E14 = "${lastwa}"
 	putexcel F14 = "${lastoc}"
 	putexcel G14 = "${lastphx}"
+	putexcel H14  = "${lastchi}"
 	tab site, matcell(counts)
 	putexcel C15 = `r(N)'
 	putexcel D15 = counts[4,1]
 	putexcel E15 = counts[1,1]
 	putexcel F15 = counts[3,1]
 	putexcel G15 = counts[2,1]
+	putexcel H15 = counts[5,1] 			/* update this when I add in site == 5 */
 	
-	local cols D E F G 
+	local cols D E F G H
 	foreach col of local cols {
 		sum count if submitted == 1 & site_col == "`col'"
 		putexcel `col'17 = (`r(N)')
@@ -798,14 +833,14 @@ save "${rdata}\Randomization\RandomizationData.dta", replace
 		putexcel `col'34 = (`r(N)') 
 		tab leasedup if site_col == "`col'", matcell(lease)
 		putexcel `col'35 = lease[2,1]
-		tab consent_administered if site_col == "`col'", matcell(consentadmin)
-		putexcel `col'40 = consentadmin[2,1]				
-		tab consent_returned if site_col == "`col'", matcell(consentreturned)
-		putexcel `col'41 = consentreturned[2,1]
-		tab consent if site_col == "`col'", matcell(consent)
-		putexcel `col'42 = consent[2,1]
-		tab consent if site_col == "`col'" & leasedup == 1, matcell(consentleased)
-		putexcel `col'43 = consentleased[2,1]
+		sum count if consent_administered == 1 & site_col == "`col'"
+		putexcel `col'40 = (`r(N)') 
+		sum count if consent_returned == 1 & site_col == "`col'"
+		putexcel `col'41 = (`r(N)') 
+		sum count if consent == 1 & site_col == "`col'"
+		putexcel `col'42 = (`r(N)') 
+		sum count if consent == 1 & leasedup == 1 & site_col == "`col'"
+		putexcel `col'43 = (`r(N)') 
 		tab haf_completed if site_col == "`col'", matcell(haf_completed)
 		putexcel `col'46 = haf_completed[2,1]
 		tab haf_eligible if site_col == "`col'", matcell(haf_eligible)
