@@ -16,15 +16,7 @@ each step takes in each site (application submission, issuance, lease-up, etc.) 
 	global rand "Y:\LHP\FUP\Impact Study\Randomization\"
 
 	log using "${log}MILESTONE_ANALYSIS_$S_DATE.log", replace
-	
-	/* KATE QUESTIONS FOR DEVLIN ON MONDAY:
-	First table is already constrained to look backward (e.g. percent who leased up within 1 month for those we observe within 1 month, etc.)
-		>> Is this ok?
-	Second table is, among those observed for 6 months:
-		Share achieving each outcome (can easily constrain so it's share observing each outcome within 6 months)
-		Mean days from previous step >> should this and below just be missing if > 180 days? 
-		Median days from previous step */
-	
+
 	
 	use "${cdata}DashboardData.dta", clear
 	
@@ -140,6 +132,10 @@ each step takes in each site (application submission, issuance, lease-up, etc.) 
 	
 	gen issued_t_marg = (issued_t - submitted_t) if submitted == 1 
 	gen leasedup_t_marg = (leasedup_t - issued_t)  if issued == 1 
+	/* confining to only count outcomes observed within 6 months */
+	replace submitted_t = . if submitted_t > 180
+	replace issued_t_marg = . if issued_t > 180
+	replace leasedup_t_marg = . if leasedup_t > 180
 	
 	by site p_id, sort: gen t_denom = _n == 1
 		replace t_denom = sum(t_denom)
@@ -149,11 +145,11 @@ each step takes in each site (application submission, issuance, lease-up, etc.) 
 	putexcel B9 = `r(N)'
 	putexcel C9 = `r(N)'
 	putexcel D9 = `r(N)'
-	sum count if submitted == 1
+	sum count if submitted == 1 & submitted_t <= 180
 	putexcel B10 = ((`r(N)')/t_denom), nformat(percent)
-	sum count if issued == 1
+	sum count if issued == 1 & issued_t <= 180
 	putexcel B11 = ((`r(N)')/t_denom), nformat(percent)
-	sum count if leasedup == 1
+	sum count if leasedup == 1 & leasedup_t <= 180
 	putexcel B12 = ((`r(N)')/t_denom), nformat(percent)
 	
 	summarize submitted_t, detail
@@ -255,6 +251,10 @@ each step takes in each site (application submission, issuance, lease-up, etc.) 
 	
 	gen issued_t_marg = (issued_t - submitted_t) if submitted == 1 
 	gen leasedup_t_marg = (leasedup_t - issued_t)  if issued == 1 
+	/* confining to only count outcomes observed within 6 months */
+	replace submitted_t = . if submitted_t > 180
+	replace issued_t_marg = . if issued_t > 180
+	replace leasedup_t_marg = . if leasedup_t > 180
 	
 	by site p_id, sort: gen t_denom = _n == 1
 		replace t_denom = sum(t_denom)
@@ -264,11 +264,11 @@ each step takes in each site (application submission, issuance, lease-up, etc.) 
 	putexcel B9 = `r(N)'
 	putexcel C9 = `r(N)'
 	putexcel D9 = `r(N)'
-	sum count if submitted == 1
+	sum count if submitted == 1 & submitted_t <= 180
 	putexcel B10 = ((`r(N)')/t_denom), nformat(percent)
-	sum count if issued == 1
+	sum count if issued == 1 & issued_t <= 180
 	putexcel B11 = ((`r(N)')/t_denom), nformat(percent)
-	sum count if leasedup == 1
+	sum count if leasedup == 1 & leasedup_t <= 180
 	putexcel B12 = ((`r(N)')/t_denom), nformat(percent)
 	
 	summarize submitted_t, detail
