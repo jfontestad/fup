@@ -17,6 +17,15 @@ each step takes in each site (application submission, issuance, lease-up, etc.) 
 
 	log using "${log}MILESTONE_ANALYSIS_$S_DATE.log", replace
 	
+	/* KATE QUESTIONS FOR DEVLIN ON MONDAY:
+	First table is already constrained to look backward (e.g. percent who leased up within 1 month for those we observe within 1 month, etc.)
+		>> Is this ok?
+	Second table is, among those observed for 6 months:
+		Share achieving each outcome (can easily constrain so it's share observing each outcome within 6 months)
+		Mean days from previous step >> should this and below just be missing if > 180 days? 
+		Median days from previous step */
+	
+	
 	use "${cdata}DashboardData.dta", clear
 	
 	keep if treatment == 1 
@@ -26,7 +35,9 @@ each step takes in each site (application submission, issuance, lease-up, etc.) 
 		replace site_text = "PHX" if site == 2
 		replace site_text = "OC" if site == 3
 		replace site_text = "BC" if site == 4
-		drop if mi(site_text) // only doing for first four now because no dashboards for new sites 
+		replace site_text = "SCC" if site == 5
+		replace site_text = "CHI" if site == 6
+		drop if mi(site_text) 
 		
 	gen cw_text = ""
 		replace cw_text = "Reunif" if reunif == 1
@@ -51,6 +62,7 @@ each step takes in each site (application submission, issuance, lease-up, etc.) 
 	assert site == 3 if mi(submitted_t) & submitted == 1
 	// assert issued_t >= 0 & issued_t != . if issued == 1  // not true for Phx 
 	assert leasedup_t >= 0 & leasedup_t != . if leasedup == 1
+
 	
 	gen count = 1
 	
@@ -347,7 +359,7 @@ each step takes in each site (application submission, issuance, lease-up, etc.) 
 	keep if lastdash - assigned_d >= 180 & cw_text == "`status'"
 	
 	putexcel A7 = "Conditional Outcomes: Among those observed for at least 6 months"
-	putexcel B8 = "Share achieving outcome", txtwrap
+	putexcel B8 = "Share achieving outcome within 6 mo", txtwrap
 	putexcel C8 = "Mean days from previous step", txtwrap
 	putexcel D8 = "Median days from previous step", txtwrap
 	putexcel A9 = "N"
@@ -357,6 +369,10 @@ each step takes in each site (application submission, issuance, lease-up, etc.) 
 	
 	gen issued_t_marg = (issued_t - submitted_t) if submitted == 1 
 	gen leasedup_t_marg = (leasedup_t - issued_t)  if issued == 1 
+	/* confining to only count outcomes observed within 6 months */
+	replace submitted_t = . if submitted_t > 180
+	replace issued_t_marg = . if issued_t > 180
+	replace leasedup_t_marg = . if leasedup_t > 180
 	
 	by site p_id, sort: gen t_denom = _n == 1
 		replace t_denom = sum(t_denom)
@@ -366,11 +382,11 @@ each step takes in each site (application submission, issuance, lease-up, etc.) 
 	putexcel B9 = `r(N)'
 	putexcel C9 = `r(N)'
 	putexcel D9 = `r(N)'
-	sum count if submitted == 1
+	sum count if submitted == 1 & submitted_t <= 180
 	putexcel B10 = ((`r(N)')/t_denom), nformat(percent)
-	sum count if issued == 1
+	sum count if issued == 1 & issued_t <= 180
 	putexcel B11 = ((`r(N)')/t_denom), nformat(percent)
-	sum count if leasedup == 1
+	sum count if leasedup == 1 & leasedup_t <= 180
 	putexcel B12 = ((`r(N)')/t_denom), nformat(percent)
 	
 	summarize submitted_t, detail
